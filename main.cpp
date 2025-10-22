@@ -87,6 +87,10 @@ Mat global_clamped_image;
 // Signal handler for window resize
 void handleResize(int sig)
 {
+    // Update ncurses to recognize the new terminal size
+    endwin();
+    refresh();
+
     // Recalculate and redraw the image
     if (!global_clamped_image.empty())
     {
@@ -97,7 +101,7 @@ void handleResize(int sig)
 int main(int argc, char **argv)
 {
     // Load the grayscale image
-    global_image = imread("../in-image.jpg", IMREAD_GRAYSCALE);
+    global_image = imread("../images/in-image.jpg", IMREAD_GRAYSCALE);
 
     if (global_image.empty())
     {
