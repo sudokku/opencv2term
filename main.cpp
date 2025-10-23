@@ -14,23 +14,26 @@ using std::vector;
 using namespace cv;
 namespace fs = std::filesystem;
 
-char ascii_gradient[16] = {
-    ' ',
-    '\'',
-    ',',
-    '^',
-    '.',
-    '-',
-    '+',
-    '=',
-    '%',
-    ':',
-    '*',
-    'o',
-    '&',
-    '8',
-    '#',
-    '@'};
+// ASCII Palette structure
+struct AsciiPalette
+{
+    string name;
+    string characters;
+    int size;
+
+    AsciiPalette(const string &n, const string &chars)
+        : name(n), characters(chars), size(chars.length()) {}
+};
+
+// Define multiple ASCII palettes
+// Based on research: 10 chars = simple, 20 chars = balanced, 70 chars = detailed
+vector<AsciiPalette> palettes = {
+    AsciiPalette("Standard (10 levels)", " .:-=+*#%@"),
+    AsciiPalette("Detailed (70 levels)", " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"),
+    AsciiPalette("Balanced (20 levels)", " .':,;!/>+=*oahkO0Q#MW@")};
+
+// Currently selected palette (global)
+const AsciiPalette *selected_palette = nullptr;
 
 // Maps the pixel values of an image to a new range
 Mat image_pixel_clamp(Mat image, int min, int max)
@@ -51,11 +54,15 @@ Mat image_pixel_clamp(Mat image, int min, int max)
 // Create matrix of ASCII characters from image pixel values
 void image_to_ascii(Mat image, char *outMatrix)
 {
+    if (!selected_palette)
+        return;
+
     for (int i = 0; i < image.rows; i++)
     {
         for (int j = 0; j < image.cols; j++)
         {
-            outMatrix[i * image.cols + j] = ascii_gradient[image.at<uchar>(i, j)];
+            int pixel_value = image.at<uchar>(i, j);
+            outMatrix[i * image.cols + j] = selected_palette->characters[pixel_value];
         }
     }
 }
@@ -196,6 +203,82 @@ string selectImageMenu(const vector<string> &imageFiles)
     }
 }
 
+// Interactive menu to select an ASCII palette
+int selectPaletteMenu()
+{
+    if (palettes.empty())
+    {
+        return -1;
+    }
+
+    int selectedIndex = 0;
+    int key;
+
+    // Enable keypad for arrow keys
+    keypad(stdscr, TRUE);
+
+    while (true)
+    {
+        clear();
+
+        // Print title
+        attron(A_BOLD);
+        mvprintw(1, 2, "Select an ASCII palette:");
+        attroff(A_BOLD);
+
+        mvprintw(2, 2, "Use UP/DOWN arrows to navigate, ENTER to select, Q to quit");
+
+        // Print palette list with preview
+        for (size_t i = 0; i < palettes.size(); i++)
+        {
+            if (i == selectedIndex)
+            {
+                attron(A_REVERSE); // Highlight selected item
+                mvprintw(4 + i * 2, 4, "> %s", palettes[i].name.c_str());
+                attroff(A_REVERSE);
+            }
+            else
+            {
+                mvprintw(4 + i * 2, 4, "  %s", palettes[i].name.c_str());
+            }
+
+            // Show preview of the palette
+            string preview = "  Preview: " + palettes[i].characters.substr(0, std::min(40, (int)palettes[i].characters.length()));
+            mvprintw(5 + i * 2, 6, "%s", preview.c_str());
+        }
+
+        refresh();
+
+        // Get user input
+        key = getch();
+
+        switch (key)
+        {
+        case KEY_UP:
+            if (selectedIndex > 0)
+            {
+                selectedIndex--;
+            }
+            break;
+
+        case KEY_DOWN:
+            if (selectedIndex < palettes.size() - 1)
+            {
+                selectedIndex++;
+            }
+            break;
+
+        case '\n': // Enter key
+        case KEY_ENTER:
+            return selectedIndex;
+
+        case 'q':
+        case 'Q':
+            return -1; // User quit
+        }
+    }
+}
+
 // Global variables for handling resize
 Mat global_image;
 Mat global_clamped_image;
@@ -234,10 +317,24 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    // Start Ncurses for the menu
+    // Start Ncurses for the menus
     initscr();
     noecho();        // Disable echoing of user input
     curs_set(FALSE); // Hide the cursor
+
+    // Show palette selection menu first
+    int paletteIndex = selectPaletteMenu();
+
+    // Check if user quit
+    if (paletteIndex < 0)
+    {
+        endwin();
+        cout << "No palette selected. Exiting..." << endl;
+        return 0;
+    }
+
+    // Set the selected palette
+    selected_palette = &palettes[paletteIndex];
 
     // Show image selection menu
     string selectedImage = selectImageMenu(imageFiles);
@@ -265,8 +362,8 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    // Create second image using the grayscale image, clamp the pixel values to the range 0-15
-    global_clamped_image = image_pixel_clamp(global_image, 0, 15);
+    // Create second image using the grayscale image, clamp the pixel values based on palette size
+    global_clamped_image = image_pixel_clamp(global_image, 0, selected_palette->size - 1);
 
     // Restart Ncurses for image display
     initscr();
