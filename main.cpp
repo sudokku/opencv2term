@@ -199,10 +199,17 @@ string selectImageMenu(const vector<string> &imageFiles)
 // Global variables for handling resize
 Mat global_image;
 Mat global_clamped_image;
+bool is_running = false; // Flag to prevent signal handler from running after exit
 
 // Signal handler for window resize
 void handleResize(int sig)
 {
+    // Don't process if we're not running
+    if (!is_running)
+    {
+        return;
+    }
+
     // Update ncurses to recognize the new terminal size
     endwin();
     refresh();
@@ -269,17 +276,33 @@ int main(int argc, char **argv)
     // Set up resize signal handler
     signal(SIGWINCH, handleResize);
 
-    // Main loop
+    // Mark as running (for signal handler safety)
+    is_running = true;
+
+    // Initial drawing
+    handleResize(0);
+
+    // Main loop - just wait for input, resize handler will redraw automatically
     for (;;)
     {
-        handleResize(0); // Initial drawing
         char c = getch();
         if (c == '\n') // Exit on ENTER key
         {
-            endwin();
             break;
         }
     }
+
+    // Cleanup
+    is_running = false;        // Prevent signal handler from accessing freed resources
+    signal(SIGWINCH, SIG_DFL); // Restore default signal handler
+    endwin();                  // Properly close ncurses
+
+    // Explicitly release OpenCV Mat objects
+    global_image.release();
+    global_clamped_image.release();
+
+    // Clean up OpenCV's thread pool
+    cv::setNumThreads(0);
 
     return 0;
 }
