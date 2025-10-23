@@ -6,6 +6,8 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <fstream>
+#include <unistd.h>
 
 using std::cout;
 using std::endl;
@@ -279,6 +281,141 @@ int selectPaletteMenu()
     }
 }
 
+// Interactive menu to select display mode
+int selectDisplayModeMenu()
+{
+    int selectedIndex = 0;
+    int key;
+
+    // Enable keypad for arrow keys
+    keypad(stdscr, TRUE);
+
+    vector<string> modes = {
+        "Display in current terminal (interactive, resizable)",
+        "Open in new window (static, with calculated dimensions)"};
+
+    while (true)
+    {
+        clear();
+
+        // Print title
+        attron(A_BOLD);
+        mvprintw(1, 2, "Select display mode:");
+        attroff(A_BOLD);
+
+        mvprintw(2, 2, "Use UP/DOWN arrows to navigate, ENTER to select, Q to quit");
+
+        // Print display mode list
+        for (size_t i = 0; i < modes.size(); i++)
+        {
+            if (i == selectedIndex)
+            {
+                attron(A_REVERSE); // Highlight selected item
+                mvprintw(4 + i, 4, "> %s", modes[i].c_str());
+                attroff(A_REVERSE);
+            }
+            else
+            {
+                mvprintw(4 + i, 4, "  %s", modes[i].c_str());
+            }
+        }
+
+        refresh();
+
+        // Get user input
+        key = getch();
+
+        switch (key)
+        {
+        case KEY_UP:
+            if (selectedIndex > 0)
+            {
+                selectedIndex--;
+            }
+            break;
+
+        case KEY_DOWN:
+            if (selectedIndex < modes.size() - 1)
+            {
+                selectedIndex++;
+            }
+            break;
+
+        case '\n': // Enter key
+        case KEY_ENTER:
+            return selectedIndex;
+
+        case 'q':
+        case 'Q':
+            return -1; // User quit
+        }
+    }
+}
+
+// Generate ASCII art to a file with calculated dimensions
+void generateAsciiToFile(Mat image, const string &filename, int maxWidth, int maxHeight)
+{
+    // Calculate dimensions preserving aspect ratio
+    double aspectRatio = (double)image.cols / image.rows;
+
+    // Account for terminal character aspect ratio (chars are taller than wide)
+    // Typical terminal char is ~2:1 height:width ratio
+    aspectRatio *= 2.0;
+
+    int width, height;
+
+    if (aspectRatio > ((double)maxWidth / maxHeight))
+    {
+        // Width is the limiting factor
+        width = maxWidth;
+        height = (int)(width / aspectRatio);
+    }
+    else
+    {
+        // Height is the limiting factor
+        height = maxHeight;
+        width = (int)(height * aspectRatio);
+    }
+
+    // Ensure minimum dimensions
+    if (width < 10)
+        width = 10;
+    if (height < 10)
+        height = 10;
+
+    // Resize image
+    Mat resized_image;
+    resize(image, resized_image, Size(width, height));
+
+    // Generate ASCII art
+    char ascii_matrix[resized_image.rows * resized_image.cols];
+    image_to_ascii(resized_image, ascii_matrix);
+
+    // Write to file
+    std::ofstream outFile(filename);
+    if (outFile.is_open())
+    {
+        for (int i = 0; i < resized_image.rows; i++)
+        {
+            for (int j = 0; j < resized_image.cols; j++)
+            {
+                outFile << ascii_matrix[i * resized_image.cols + j];
+            }
+            outFile << '\n';
+        }
+        outFile.close();
+    }
+}
+
+// Open ASCII art in a new terminal window (macOS)
+void openInNewWindow(const string &filename)
+{
+    // Create AppleScript command to open new Terminal window with the file
+    string command = "osascript -e 'tell application \"Terminal\" to do script \"clear && cat " +
+                     filename + " && echo \\\"\\\\nPress any key to close...\\\" && read -n 1\"'";
+    system(command.c_str());
+}
+
 // Global variables for handling resize
 Mat global_image;
 Mat global_clamped_image;
@@ -347,6 +484,17 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    // Show display mode selection menu
+    int displayMode = selectDisplayModeMenu();
+
+    // Check if user quit
+    if (displayMode < 0)
+    {
+        endwin();
+        cout << "No display mode selected. Exiting..." << endl;
+        return 0;
+    }
+
     // End ncurses temporarily to load the image
     endwin();
 
@@ -365,34 +513,60 @@ int main(int argc, char **argv)
     // Create second image using the grayscale image, clamp the pixel values based on palette size
     global_clamped_image = image_pixel_clamp(global_image, 0, selected_palette->size - 1);
 
-    // Restart Ncurses for image display
-    initscr();
-    noecho();        // Disable echoing of user input
-    curs_set(FALSE); // Hide the cursor
-
-    // Set up resize signal handler
-    signal(SIGWINCH, handleResize);
-
-    // Mark as running (for signal handler safety)
-    is_running = true;
-
-    // Initial drawing
-    handleResize(0);
-
-    // Main loop - just wait for input, resize handler will redraw automatically
-    for (;;)
+    if (displayMode == 0)
     {
-        char c = getch();
-        if (c == '\n') // Exit on ENTER key
-        {
-            break;
-        }
-    }
+        // Mode 0: Display in current terminal (interactive)
 
-    // Cleanup
-    is_running = false;        // Prevent signal handler from accessing freed resources
-    signal(SIGWINCH, SIG_DFL); // Restore default signal handler
-    endwin();                  // Properly close ncurses
+        // Restart Ncurses for image display
+        initscr();
+        noecho();        // Disable echoing of user input
+        curs_set(FALSE); // Hide the cursor
+
+        // Set up resize signal handler
+        signal(SIGWINCH, handleResize);
+
+        // Mark as running (for signal handler safety)
+        is_running = true;
+
+        // Initial drawing
+        handleResize(0);
+
+        // Main loop - just wait for input, resize handler will redraw automatically
+        for (;;)
+        {
+            char c = getch();
+            if (c == '\n') // Exit on ENTER key
+            {
+                break;
+            }
+        }
+
+        // Cleanup
+        is_running = false;        // Prevent signal handler from accessing freed resources
+        signal(SIGWINCH, SIG_DFL); // Restore default signal handler
+        endwin();                  // Properly close ncurses
+    }
+    else if (displayMode == 1)
+    {
+        // Mode 1: Open in new window (static)
+
+        // Max dimensions for new window (reasonable defaults)
+        int maxWidth = 120;
+        int maxHeight = 60;
+
+        // Generate ASCII art to a temporary file
+        string tempFile = "/tmp/opencv2term_output.txt";
+        generateAsciiToFile(global_clamped_image, tempFile, maxWidth, maxHeight);
+
+        cout << "Opening ASCII art in new window..." << endl;
+        cout << "Dimensions: max " << maxWidth << "x" << maxHeight << " (aspect ratio preserved)" << endl;
+
+        // Open in new terminal window
+        openInNewWindow(tempFile);
+
+        // Wait a moment for the window to open
+        sleep(1);
+    }
 
     // Explicitly release OpenCV Mat objects
     global_image.release();
