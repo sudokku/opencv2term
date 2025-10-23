@@ -1,3 +1,7 @@
 build/
 .vscode/
 images/
+main.cpp.old
+*.o
+*.a
+compile_commands.json

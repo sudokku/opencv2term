@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(OpenCVProject)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Find OpenCV
 find_package(OpenCV REQUIRED)
@@ -11,8 +12,24 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIRS})
 
-# Add the executable
-add_executable(OpenCVProject main.cpp)
+# Include directories
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
-# Link OpenCV and Ncurses
-target_link_libraries(OpenCVProject ${OpenCV_LIBS} ${CURSES_LIBRARIES})
+# Source files
+set(SOURCES
+    src/main.cpp
+    src/AsciiPalette.cpp
+    src/ImageProcessor.cpp
+    src/AsciiRenderer.cpp
+    src/DisplayManager.cpp
+    src/MenuManager.cpp
+)
+
+# Add the executable
+add_executable(OpenCVProject ${SOURCES})
+
+# Link libraries
+target_link_libraries(OpenCVProject 
+    ${OpenCV_LIBS} 
+    ${CURSES_LIBRARIES}
+)
