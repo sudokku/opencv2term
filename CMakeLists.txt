@@ -20,6 +20,7 @@ set(SOURCES
     src/main.cpp
     src/AsciiPalette.cpp
     src/ImageProcessor.cpp
+    src/VideoProcessor.cpp
     src/AsciiRenderer.cpp
     src/DisplayManager.cpp
     src/MenuManager.cpp

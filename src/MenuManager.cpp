@@ -57,6 +57,27 @@ int MenuManager::selectDisplayMode() {
     return showMenu("Select display mode:", options);
 }
 
+int MenuManager::selectMediaType()
+{
+    std::vector<std::string> options = {
+        "Image",
+        "Video"};
+
+    return showMenu("Select media type:", options);
+}
+
+std::string MenuManager::selectVideo(const std::vector<std::string> &videos)
+{
+    std::vector<std::string> options(videos.begin(), videos.end());
+    int selected = showMenu("Select a video to display:", options);
+
+    if (selected >= 0 && selected < (int)videos.size())
+    {
+        return videos[selected];
+    }
+    return "";
+}
+
 int MenuManager::showMenu(const std::string& title, const std::vector<std::string>& options,
                           const std::vector<std::string>& descriptions) {
     if (options.empty()) return -1;

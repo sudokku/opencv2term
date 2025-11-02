@@ -24,7 +24,13 @@ public:
     
     // Show display mode selection menu
     int selectDisplayMode();
-    
+
+    // Show media type selection menu (image or video)
+    int selectMediaType();
+
+    // Show video selection menu
+    std::string selectVideo(const std::vector<std::string> &videos);
+
 private:
     bool initialized_;
     

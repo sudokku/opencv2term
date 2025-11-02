@@ -4,6 +4,9 @@
 #include <csignal>
 #include <unistd.h>
 #include <cstdlib>
+#include <fstream>
+#include <chrono>
+#include <thread>
 
 // Initialize static member
 DisplayManager* DisplayManager::instance_ = nullptr;
@@ -43,7 +46,8 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     // Main loop - wait for input
     while (isRunning_) {
         char c = getch();
-        if (c == '\n') {  // Exit on ENTER
+        if (c == '\n' || c == 'q' || c == 'Q')
+        { // Exit on ENTER or Q
             break;
         }
     }
@@ -54,16 +58,77 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     endwin();
 }
 
-void DisplayManager::displayInNewWindow(const cv::Mat& image, int maxWidth, int maxHeight) {
-    if (image.empty() || !renderer_) return;
-    
-    // Use ImageProcessor to resize with proper aspect ratio
-    ImageProcessor processor;
-    // Create temporary processor with the image
-    cv::Mat tempImage = image.clone();
-    
+void DisplayManager::displayVideoInTerminal(std::function<bool(cv::Mat &)> frameProvider,
+                                            int paletteSize, double fps)
+{
+    if (!renderer_)
+        return;
+
+    // Initialize ncurses
+    initscr();
+    noecho();
+    curs_set(FALSE);
+    nodelay(stdscr, TRUE); // Non-blocking getch()
+
+    isRunning_ = true;
+
+    // Calculate frame delay in microseconds
+    int frameDelay = (int)(1000000.0 / fps);
+
+    cv::Mat frame;
+    while (isRunning_)
+    {
+        auto frameStart = std::chrono::high_resolution_clock::now();
+
+        // Get next frame
+        if (!frameProvider(frame))
+        {
+            break; // Video ended
+        }
+
+        // Clamp pixel values to palette size
+        cv::Mat clampedFrame = frame.clone();
+        for (int i = 0; i < clampedFrame.rows; i++)
+        {
+            for (int j = 0; j < clampedFrame.cols; j++)
+            {
+                clampedFrame.at<uchar>(i, j) = cv::saturate_cast<uchar>(
+                    (paletteSize - 1) * (frame.at<uchar>(i, j) / 255.0));
+            }
+        }
+
+        // Display frame
+        printImage(clampedFrame);
+
+        // Check for user input to quit
+        char c = getch();
+        if (c == 'q' || c == 'Q' || c == '\n')
+        {
+            break;
+        }
+
+        // Wait for correct frame timing
+        auto frameEnd = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart).count();
+        int remainingDelay = frameDelay - elapsed;
+        if (remainingDelay > 0)
+        {
+            usleep(remainingDelay);
+        }
+    }
+
+    // Cleanup
+    isRunning_ = false;
+    endwin();
+}
+
+void DisplayManager::displayImageInNewWindow(const cv::Mat &image, int maxWidth, int maxHeight)
+{
+    if (image.empty() || !renderer_)
+        return;
+
     // Calculate dimensions with aspect ratio
-    double aspectRatio = (double)tempImage.cols / tempImage.rows;
+    double aspectRatio = (double)image.cols / image.rows;
     aspectRatio *= 2.0;  // Account for character aspect ratio
     
     int width, height;
@@ -79,18 +144,152 @@ void DisplayManager::displayInNewWindow(const cv::Mat& image, int maxWidth, int 
     if (height < 10) height = 10;
     
     cv::Mat resized;
-    cv::resize(tempImage, resized, cv::Size(width, height));
-    
+    cv::resize(image, resized, cv::Size(width, height));
+
     // Generate ASCII art to temporary file
     std::string tempFile = "/tmp/opencv2term_output.txt";
     if (renderer_->saveToFile(resized, tempFile)) {
-        // Open in new terminal window (macOS)
-        std::string command = "osascript -e 'tell application \"Terminal\" to do script \"clear && cat " + 
-                             tempFile + " && echo \\\"\\\\nPress any key to close...\\\" && read -n 1\"'";
-        system(command.c_str());
-        
+        // Generate and execute display script
+        std::string scriptFile = "/tmp/opencv2term_display.sh";
+        std::string script = generateDisplayScript(tempFile, false);
+
+        std::ofstream scriptOut(scriptFile);
+        scriptOut << script;
+        scriptOut.close();
+
+        system(("chmod +x " + scriptFile).c_str());
+        system(("open -a Terminal " + scriptFile).c_str());
+
         sleep(1);  // Wait for window to open
     }
+}
+
+void DisplayManager::displayVideoInNewWindow(std::function<bool(cv::Mat &)> frameProvider,
+                                             int paletteSize, double fps,
+                                             int maxWidth, int maxHeight)
+{
+    if (!renderer_)
+        return;
+
+    // Generate all frames to a temporary directory
+    system("rm -rf /tmp/opencv2term_frames && mkdir -p /tmp/opencv2term_frames");
+
+    int frameCount = 0;
+    cv::Mat frame;
+
+    // Calculate dimensions from first frame
+    if (!frameProvider(frame))
+        return;
+
+    double aspectRatio = (double)frame.cols / frame.rows;
+    aspectRatio *= 2.0;
+
+    int width, height;
+    if (aspectRatio > ((double)maxWidth / maxHeight))
+    {
+        width = maxWidth;
+        height = (int)(width / aspectRatio);
+    }
+    else
+    {
+        height = maxHeight;
+        width = (int)(height * aspectRatio);
+    }
+
+    if (width < 10)
+        width = 10;
+    if (height < 10)
+        height = 10;
+
+    // Process first frame
+    cv::Mat clampedFrame = frame.clone();
+    for (int i = 0; i < clampedFrame.rows; i++)
+    {
+        for (int j = 0; j < clampedFrame.cols; j++)
+        {
+            clampedFrame.at<uchar>(i, j) = cv::saturate_cast<uchar>(
+                (paletteSize - 1) * (frame.at<uchar>(i, j) / 255.0));
+        }
+    }
+
+    cv::Mat resized;
+    cv::resize(clampedFrame, resized, cv::Size(width, height));
+
+    char filename[256];
+    snprintf(filename, sizeof(filename), "/tmp/opencv2term_frames/frame_%05d.txt", frameCount++);
+    renderer_->saveToFile(resized, filename);
+
+    // Process remaining frames
+    while (frameProvider(frame))
+    {
+        clampedFrame = frame.clone();
+        for (int i = 0; i < clampedFrame.rows; i++)
+        {
+            for (int j = 0; j < clampedFrame.cols; j++)
+            {
+                clampedFrame.at<uchar>(i, j) = cv::saturate_cast<uchar>(
+                    (paletteSize - 1) * (frame.at<uchar>(i, j) / 255.0));
+            }
+        }
+
+        cv::resize(clampedFrame, resized, cv::Size(width, height));
+
+        snprintf(filename, sizeof(filename), "/tmp/opencv2term_frames/frame_%05d.txt", frameCount++);
+        renderer_->saveToFile(resized, filename);
+    }
+
+    // Generate playback script
+    std::string scriptFile = "/tmp/opencv2term_play.sh";
+    std::ofstream script(scriptFile);
+
+    double frameDelay = 1.0 / fps;
+
+    script << "#!/bin/bash\n";
+    script << "clear\n";
+    script << "tput civis\n";                       // Hide cursor
+    script << "trap 'tput cnorm; exit' INT TERM\n"; // Restore cursor on exit
+    script << "\n";
+    script << "while true; do\n";
+    script << "  for frame in /tmp/opencv2term_frames/frame_*.txt; do\n";
+    script << "    clear\n";
+    script << "    cat \"$frame\"\n";
+    script << "    sleep " << frameDelay << "\n";
+    script << "  done\n";
+    script << "done\n";
+
+    script.close();
+
+    system(("chmod +x " + scriptFile).c_str());
+    system(("open -a Terminal " + scriptFile).c_str());
+
+    sleep(1);
+}
+
+std::string DisplayManager::generateDisplayScript(const std::string &asciiFile, bool isVideo)
+{
+    std::ostringstream script;
+
+    script << "#!/bin/bash\n";
+    script << "clear\n";
+    script << "tput civis\n";                       // Hide cursor
+    script << "trap 'tput cnorm; exit' INT TERM\n"; // Restore cursor on exit
+    script << "\n";
+
+    if (isVideo)
+    {
+        script << "# Video playback\n";
+        script << "cat \"" << asciiFile << "\"\n";
+    }
+    else
+    {
+        script << "# Static image display\n";
+        script << "cat \"" << asciiFile << "\"\n";
+        script << "echo \"\"\n";
+        script << "read -n 1 -s -r -p \"Press any key to close...\"\n";
+        script << "tput cnorm\n"; // Restore cursor
+    }
+
+    return script.str();
 }
 
 void DisplayManager::printImage(const cv::Mat& image) {
@@ -127,4 +326,3 @@ void DisplayManager::handleResizeSignal(int sig) {
         instance_->printImage(instance_->currentImage_);
     }
 }
-
