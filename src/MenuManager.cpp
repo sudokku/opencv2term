@@ -61,7 +61,8 @@ int MenuManager::selectMediaType()
 {
     std::vector<std::string> options = {
         "Image",
-        "Video"};
+        "Video",
+        "Live Camera"};
 
     return showMenu("Select media type:", options);
 }

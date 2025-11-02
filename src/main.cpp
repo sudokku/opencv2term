@@ -3,6 +3,7 @@
 #include "AsciiPalette.h"
 #include "ImageProcessor.h"
 #include "VideoProcessor.h"
+#include "CameraProcessor.h"
 #include "AsciiRenderer.h"
 #include "DisplayManager.h"
 #include "MenuManager.h"
@@ -40,7 +41,7 @@ int main(int argc, char** argv) {
     }
     const AsciiPalette& selectedPalette = palettes[paletteIndex];
 
-    // Step 2: Select media type (image or video)
+    // Step 2: Select media type (image, video, or camera)
     int mediaType = menuManager.selectMediaType();
     if (mediaType < 0)
     {
@@ -51,9 +52,14 @@ int main(int argc, char** argv) {
 
     std::string selectedMedia;
     bool isVideo = (mediaType == 1);
+    bool isCamera = (mediaType == 2);
 
-    // Step 3: Select specific media file
-    if (isVideo)
+    // Step 3: Select specific media file (skip for camera)
+    if (isCamera) {
+        // Camera doesn't need file selection
+        selectedMedia = "";
+    }
+    else if (isVideo)
     {
         if (videoFiles.empty())
         {
@@ -74,7 +80,7 @@ int main(int argc, char** argv) {
         selectedMedia = menuManager.selectImage(imageFiles);
     }
 
-    if (selectedMedia.empty())
+    if (selectedMedia.empty() && !isCamera)
     {
         menuManager.cleanup();
         std::cout << "No media selected. Exiting..." << std::endl;
@@ -98,7 +104,58 @@ int main(int argc, char** argv) {
     AsciiRenderer renderer(&selectedPalette);
     DisplayManager displayManager(&renderer);
 
-    if (isVideo)
+    if (isCamera)
+    {
+        // Handle live camera feed
+        CameraProcessor cameraProcessor;
+
+        std::cout << "Opening camera..." << std::endl;
+        if (!cameraProcessor.openCamera(0))  // 0 = default camera
+        {
+            std::cerr << "Error: Could not open camera. Please check:" << std::endl;
+            std::cerr << "  - Camera is connected" << std::endl;
+            std::cerr << "  - No other app is using the camera" << std::endl;
+            std::cerr << "  - Camera permissions are granted" << std::endl;
+            return -1;
+        }
+
+        std::cout << "Camera opened successfully!" << std::endl;
+        std::cout << "  FPS: " << cameraProcessor.getFPS() << std::endl;
+        std::cout << "  Resolution: " << cameraProcessor.getWidth() << "x" << cameraProcessor.getHeight() << std::endl;
+
+        if (displayMode == 0)
+        {
+            // Display in current terminal
+            std::cout << "Starting live camera feed... Press Q or ENTER to stop." << std::endl;
+            sleep(2);
+
+            auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
+            {
+                return cameraProcessor.getNextFrame(frame);
+            };
+
+            displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
+                                                  cameraProcessor.getFPS());
+        }
+        else
+        {
+            // Camera in new window not supported - use current terminal
+            std::cout << "Note: Live camera feed only supports current terminal display." << std::endl;
+            std::cout << "Starting live camera feed... Press Q or ENTER to stop." << std::endl;
+            sleep(2);
+
+            auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
+            {
+                return cameraProcessor.getNextFrame(frame);
+            };
+
+            displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
+                                                  cameraProcessor.getFPS());
+        }
+
+        cameraProcessor.release();
+    }
+    else if (isVideo)
     {
         // Handle video playback
         VideoProcessor videoProcessor;

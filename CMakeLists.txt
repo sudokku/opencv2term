@@ -21,6 +21,7 @@ set(SOURCES
     src/AsciiPalette.cpp
     src/ImageProcessor.cpp
     src/VideoProcessor.cpp
+    src/CameraProcessor.cpp
     src/AsciiRenderer.cpp
     src/DisplayManager.cpp
     src/MenuManager.cpp

@@ -24,8 +24,8 @@ public:
     
     // Show display mode selection menu
     int selectDisplayMode();
-
-    // Show media type selection menu (image or video)
+    
+    // Show media type selection menu (image, video, or camera)
     int selectMediaType();
 
     // Show video selection menu
