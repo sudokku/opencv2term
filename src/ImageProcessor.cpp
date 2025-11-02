@@ -15,6 +15,19 @@ bool ImageProcessor::loadImage(const std::string& filepath) {
     return !image_.empty();
 }
 
+bool ImageProcessor::loadImageWithColor(const std::string& filepath, cv::Mat& colorImage) {
+    // Load color image
+    colorImage = cv::imread(filepath, cv::IMREAD_COLOR);
+    if (colorImage.empty()) {
+        return false;
+    }
+    
+    // Also load grayscale version
+    cv::cvtColor(colorImage, image_, cv::COLOR_BGR2GRAY);
+    
+    return true;
+}
+
 std::vector<std::string> ImageProcessor::getImageFiles(const std::string& directory) {
     std::vector<std::string> imageFiles;
     std::vector<std::string> extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif"};

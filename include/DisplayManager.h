@@ -29,10 +29,14 @@ public:
 private:
     const AsciiRenderer* renderer_;
     cv::Mat currentImage_;
+    cv::Mat currentColorImage_;
     bool isRunning_;
     
     // Print image using ncurses
     void printImage(const cv::Mat& image);
+    
+    // Print image with color using ncurses
+    void printImageWithColor(const cv::Mat& grayImage, const cv::Mat& colorImage);
 
     // Generate shell script for clean external window display
     std::string generateDisplayScript(const std::string &asciiFile, bool isVideo = false);

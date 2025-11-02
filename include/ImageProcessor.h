@@ -9,10 +9,13 @@ class ImageProcessor {
 public:
     ImageProcessor();
     ~ImageProcessor();
-    
-    // Load an image from file
+
+    // Load an image from file (grayscale)
     bool loadImage(const std::string& filepath);
-    
+
+    // Load an image from file (both color and grayscale)
+    bool loadImageWithColor(const std::string &filepath, cv::Mat &colorImage);
+
     // Get list of image files from directory
     static std::vector<std::string> getImageFiles(const std::string& directory);
     

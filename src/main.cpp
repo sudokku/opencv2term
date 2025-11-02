@@ -7,6 +7,7 @@
 #include "AsciiRenderer.h"
 #include "DisplayManager.h"
 #include "MenuManager.h"
+#include <ncurses.h>
 
 int main(int argc, char** argv) {
     // Configuration
@@ -41,7 +42,10 @@ int main(int argc, char** argv) {
     }
     const AsciiPalette& selectedPalette = palettes[paletteIndex];
 
-    // Step 2: Select media type (image, video, or camera)
+    // Step 2: Select color mode
+    bool useColor = menuManager.selectColorMode();
+
+    // Step 3: Select media type (image, video, or camera)
     int mediaType = menuManager.selectMediaType();
     if (mediaType < 0)
     {
@@ -100,8 +104,8 @@ int main(int argc, char** argv) {
 
     std::string mediaPath = imagesDir + "/" + selectedMedia;
 
-    // Create renderer with selected palette
-    AsciiRenderer renderer(&selectedPalette);
+    // Create renderer with selected palette and color mode
+    AsciiRenderer renderer(&selectedPalette, useColor);
     DisplayManager displayManager(&renderer);
 
     if (isCamera)
@@ -209,8 +213,17 @@ int main(int argc, char** argv) {
     {
         // Handle image display
         ImageProcessor imageProcessor;
+        cv::Mat colorImage;
 
-        if (!imageProcessor.loadImage(mediaPath))
+        // Load image based on color mode
+        bool loaded = false;
+        if (useColor) {
+            loaded = imageProcessor.loadImageWithColor(mediaPath, colorImage);
+        } else {
+            loaded = imageProcessor.loadImage(mediaPath);
+        }
+
+        if (!loaded)
         {
             std::cerr << "Error: Could not load image file: " << mediaPath << std::endl;
             return -1;
@@ -222,7 +235,60 @@ int main(int argc, char** argv) {
         if (displayMode == 0)
         {
             // Display in current terminal
-            displayManager.displayInTerminal(processedImage);
+            if (useColor && !colorImage.empty()) {
+                // Color mode - need to create a custom display method
+                // For now, we'll update DisplayManager to handle this
+                
+                // Initialize ncurses with color
+                initscr();
+                noecho();
+                curs_set(FALSE);
+                
+                if (has_colors()) {
+                    start_color();
+                    use_default_colors();
+                    for (int i = 0; i < 16; i++) {
+                        init_pair(i + 1, i, -1);
+                    }
+                }
+                
+                // Get terminal size and resize images
+                int max_y, max_x;
+                getmaxyx(stdscr, max_y, max_x);
+                
+                cv::Mat grayResized, colorResized;
+                cv::resize(processedImage, grayResized, cv::Size(max_x, max_y));
+                cv::resize(colorImage, colorResized, cv::Size(max_x, max_y));
+                
+                // Render with color
+                int size = grayResized.rows * grayResized.cols;
+                char* ascii_matrix = new char[size];
+                int* color_pairs = new int[size];
+                renderer.renderToMatrixWithColor(colorResized, grayResized, ascii_matrix, color_pairs);
+                
+                // Display
+                clear();
+                for (int i = 0; i < grayResized.rows; i++) {
+                    for (int j = 0; j < grayResized.cols; j++) {
+                        int idx = i * grayResized.cols + j;
+                        attron(COLOR_PAIR(color_pairs[idx] + 1));
+                        mvaddch(i, j, ascii_matrix[idx]);
+                        attroff(COLOR_PAIR(color_pairs[idx] + 1));
+                    }
+                }
+                refresh();
+                
+                // Wait for key press
+                getch();
+                
+                // Cleanup
+                delete[] ascii_matrix;
+                delete[] color_pairs;
+                endwin();
+            } else {
+                // Grayscale mode - use existing method
+                displayManager.displayInTerminal(processedImage);
+            }
         }
         else
         {
@@ -230,6 +296,9 @@ int main(int argc, char** argv) {
             std::cout << "Opening image in new window..." << std::endl;
             std::cout << "Dimensions: max " << maxWindowWidth << "x" << maxWindowHeight
                       << " (aspect ratio preserved)" << std::endl;
+            if (useColor) {
+                std::cout << "Note: External window mode uses grayscale only" << std::endl;
+            }
             displayManager.displayImageInNewWindow(processedImage, maxWindowWidth, maxWindowHeight);
         }
 

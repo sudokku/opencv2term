@@ -44,6 +44,24 @@ bool CameraProcessor::getNextFrame(cv::Mat& frame) {
     return true;
 }
 
+bool CameraProcessor::getNextFrameWithColor(cv::Mat &grayFrame, cv::Mat &colorFrame)
+{
+    if (!capture_.isOpened())
+    {
+        return false;
+    }
+
+    if (!capture_.read(colorFrame))
+    {
+        return false;
+    }
+
+    // Convert to grayscale
+    cv::cvtColor(colorFrame, grayFrame, cv::COLOR_BGR2GRAY);
+
+    return true;
+}
+
 double CameraProcessor::getFPS() const {
     return fps_;
 }

@@ -35,6 +35,17 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     noecho();
     curs_set(FALSE);
     
+    // Initialize colors if renderer uses color
+    if (renderer_->isUsingColor() && has_colors()) {
+        start_color();
+        use_default_colors();
+        
+        // Initialize 16 color pairs (1-16) for basic terminal colors
+        for (int i = 0; i < 16; i++) {
+            init_pair(i + 1, i, -1);  // Foreground color i, default background
+        }
+    }
+    
     // Set up resize signal handler
     signal(SIGWINCH, handleResizeSignal);
     
@@ -46,8 +57,7 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     // Main loop - wait for input
     while (isRunning_) {
         char c = getch();
-        if (c == '\n' || c == 'q' || c == 'Q')
-        { // Exit on ENTER or Q
+        if (c == '\n' || c == 'q' || c == 'Q') { // Exit on ENTER or Q
             break;
         }
     }
@@ -69,6 +79,17 @@ void DisplayManager::displayVideoInTerminal(std::function<bool(cv::Mat &)> frame
     noecho();
     curs_set(FALSE);
     nodelay(stdscr, TRUE); // Non-blocking getch()
+    
+    // Initialize colors if renderer uses color
+    if (renderer_->isUsingColor() && has_colors()) {
+        start_color();
+        use_default_colors();
+        
+        // Initialize 16 color pairs (1-16) for basic terminal colors
+        for (int i = 0; i < 16; i++) {
+            init_pair(i + 1, i, -1);  // Foreground color i, default background
+        }
+    }
 
     isRunning_ = true;
 
@@ -311,6 +332,38 @@ void DisplayManager::printImage(const cv::Mat& image) {
     for (int i = 0; i < resized.rows; i++) {
         for (int j = 0; j < resized.cols; j++) {
             mvprintw(i, j, "%c", ascii_matrix[i * resized.cols + j]);
+        }
+    }
+    refresh();
+}
+
+void DisplayManager::printImageWithColor(const cv::Mat& grayImage, const cv::Mat& colorImage) {
+    if (grayImage.empty() || colorImage.empty() || !renderer_) return;
+    
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+    
+    // Resize both images to fit terminal
+    cv::Mat grayResized, colorResized;
+    cv::resize(grayImage, grayResized, cv::Size(max_x, max_y));
+    cv::resize(colorImage, colorResized, cv::Size(max_x, max_y));
+    
+    // Create ASCII matrix with color information
+    int size = grayResized.rows * grayResized.cols;
+    char ascii_matrix[size];
+    int color_pairs[size];
+    renderer_->renderToMatrixWithColor(colorResized, grayResized, ascii_matrix, color_pairs);
+    
+    // Print to terminal with colors
+    clear();
+    for (int i = 0; i < grayResized.rows; i++) {
+        for (int j = 0; j < grayResized.cols; j++) {
+            int idx = i * grayResized.cols + j;
+            
+            // Apply color attribute
+            attron(COLOR_PAIR(color_pairs[idx] + 1));
+            mvaddch(i, j, ascii_matrix[idx]);
+            attroff(COLOR_PAIR(color_pairs[idx] + 1));
         }
     }
     refresh();

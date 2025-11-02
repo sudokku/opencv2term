@@ -72,6 +72,21 @@ bool VideoProcessor::getNextFrame(cv::Mat& frame) {
     return true;
 }
 
+bool VideoProcessor::getNextFrameWithColor(cv::Mat& grayFrame, cv::Mat& colorFrame) {
+    if (!capture_.isOpened()) {
+        return false;
+    }
+    
+    if (!capture_.read(colorFrame)) {
+        return false;
+    }
+    
+    // Convert to grayscale
+    cv::cvtColor(colorFrame, grayFrame, cv::COLOR_BGR2GRAY);
+    
+    return true;
+}
+
 void VideoProcessor::reset() {
     if (capture_.isOpened()) {
         capture_.set(cv::CAP_PROP_POS_FRAMES, 0);

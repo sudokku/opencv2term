@@ -14,7 +14,10 @@ public:
     
     // Get the next frame from camera (returns false on error)
     bool getNextFrame(cv::Mat& frame);
-    
+
+    // Get the next frame with color from camera (returns false on error)
+    bool getNextFrameWithColor(cv::Mat &grayFrame, cv::Mat &colorFrame);
+
     // Get camera properties
     double getFPS() const;
     int getWidth() const;

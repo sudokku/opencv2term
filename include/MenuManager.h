@@ -30,7 +30,10 @@ public:
 
     // Show video selection menu
     std::string selectVideo(const std::vector<std::string> &videos);
-
+    
+    // Show color mode selection menu
+    bool selectColorMode();
+    
 private:
     bool initialized_;
     

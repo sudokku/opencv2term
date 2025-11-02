@@ -19,6 +19,9 @@ public:
     // Get the next frame (returns false when video ends)
     bool getNextFrame(cv::Mat& frame);
     
+    // Get the next frame with color (returns false when video ends)
+    bool getNextFrameWithColor(cv::Mat& grayFrame, cv::Mat& colorFrame);
+    
     // Reset to beginning of video
     void reset();
     
