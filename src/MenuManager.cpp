@@ -79,21 +79,24 @@ std::string MenuManager::selectVideo(const std::vector<std::string> &videos)
     return "";
 }
 
-bool MenuManager::selectColorMode()
+int MenuManager::selectColorMode()
 {
     std::vector<std::string> options = {
         "Grayscale (classic monochrome)",
-        "Color (16-color terminal)"};
+        "16-Color (basic terminal colors)",
+        "256-Color (full color palette)"
+    };
     
     std::vector<std::string> descriptions = {
         "  Traditional ASCII art with brightness only",
-        "  Colorized ASCII art using terminal colors"
+        "  Basic colors: Red, Green, Blue, Yellow, etc.",
+        "  Full RGB spectrum with 216 colors + 24 gray shades"
     };
 
     int selected = showMenu("Select color mode:", options, descriptions);
     
-    // Return true if color selected (option 1), false if grayscale (option 0) or quit
-    return (selected == 1);
+    // Returns: 0=Grayscale, 1=16-color, 2=256-color, -1=quit
+    return selected;
 }
 
 int MenuManager::showMenu(const std::string& title, const std::vector<std::string>& options,

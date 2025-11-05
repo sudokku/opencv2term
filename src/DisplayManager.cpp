@@ -16,6 +16,28 @@ DisplayManager::DisplayManager(const AsciiRenderer* renderer)
     instance_ = this;
 }
 
+void DisplayManager::initializeColors() {
+    if (!renderer_->isUsingColor() || !has_colors()) return;
+    
+    start_color();
+    use_default_colors();
+    
+    ColorMode colorMode = renderer_->getColorMode();
+    
+    if (colorMode == ColorMode::COLOR_256) {
+        // Initialize all 256 color pairs for 256-color mode
+        // Pair i uses foreground color i with default background
+        for (int i = 0; i < 256; i++) {
+            init_pair(i + 1, i, -1);
+        }
+    } else if (colorMode == ColorMode::COLOR_16) {
+        // Initialize 16 color pairs for 16-color mode
+        for (int i = 0; i < 16; i++) {
+            init_pair(i + 1, i, -1);
+        }
+    }
+}
+
 DisplayManager::~DisplayManager() {
     if (isRunning_) {
         isRunning_ = false;
@@ -29,22 +51,15 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     if (image.empty() || !renderer_) return;
     
     currentImage_ = image;
+    currentColorImage_ = cv::Mat();  // Clear color image
     
     // Initialize ncurses
     initscr();
     noecho();
     curs_set(FALSE);
     
-    // Initialize colors if renderer uses color
-    if (renderer_->isUsingColor() && has_colors()) {
-        start_color();
-        use_default_colors();
-        
-        // Initialize 16 color pairs (1-16) for basic terminal colors
-        for (int i = 0; i < 16; i++) {
-            init_pair(i + 1, i, -1);  // Foreground color i, default background
-        }
-    }
+    // Initialize colors
+    initializeColors();
     
     // Set up resize signal handler
     signal(SIGWINCH, handleResizeSignal);
@@ -53,6 +68,42 @@ void DisplayManager::displayInTerminal(const cv::Mat& image) {
     
     // Initial drawing
     printImage(currentImage_);
+    
+    // Main loop - wait for input
+    while (isRunning_) {
+        char c = getch();
+        if (c == '\n' || c == 'q' || c == 'Q') { // Exit on ENTER or Q
+            break;
+        }
+    }
+    
+    // Cleanup
+    isRunning_ = false;
+    signal(SIGWINCH, SIG_DFL);
+    endwin();
+}
+
+void DisplayManager::displayInTerminalWithColor(const cv::Mat& grayImage, const cv::Mat& colorImage) {
+    if (grayImage.empty() || colorImage.empty() || !renderer_) return;
+    
+    currentImage_ = grayImage;
+    currentColorImage_ = colorImage;
+    
+    // Initialize ncurses
+    initscr();
+    noecho();
+    curs_set(FALSE);
+    
+    // Initialize colors
+    initializeColors();
+    
+    // Set up resize signal handler
+    signal(SIGWINCH, handleResizeSignal);
+    
+    isRunning_ = true;
+    
+    // Initial drawing
+    printImageWithColor(currentImage_, currentColorImage_);
     
     // Main loop - wait for input
     while (isRunning_) {
@@ -80,16 +131,8 @@ void DisplayManager::displayVideoInTerminal(std::function<bool(cv::Mat &)> frame
     curs_set(FALSE);
     nodelay(stdscr, TRUE); // Non-blocking getch()
     
-    // Initialize colors if renderer uses color
-    if (renderer_->isUsingColor() && has_colors()) {
-        start_color();
-        use_default_colors();
-        
-        // Initialize 16 color pairs (1-16) for basic terminal colors
-        for (int i = 0; i < 16; i++) {
-            init_pair(i + 1, i, -1);  // Foreground color i, default background
-        }
-    }
+    // Initialize colors
+    initializeColors();
 
     isRunning_ = true;
 
@@ -120,6 +163,73 @@ void DisplayManager::displayVideoInTerminal(std::function<bool(cv::Mat &)> frame
 
         // Display frame
         printImage(clampedFrame);
+
+        // Check for user input to quit
+        char c = getch();
+        if (c == 'q' || c == 'Q' || c == '\n')
+        {
+            break;
+        }
+
+        // Wait for correct frame timing
+        auto frameEnd = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart).count();
+        int remainingDelay = frameDelay - elapsed;
+        if (remainingDelay > 0)
+        {
+            usleep(remainingDelay);
+        }
+    }
+
+    // Cleanup
+    isRunning_ = false;
+    endwin();
+}
+
+void DisplayManager::displayVideoInTerminalWithColor(std::function<bool(cv::Mat&, cv::Mat&)> frameProvider,
+                                                      int paletteSize, double fps)
+{
+    if (!renderer_)
+        return;
+
+    // Initialize ncurses
+    initscr();
+    noecho();
+    curs_set(FALSE);
+    nodelay(stdscr, TRUE); // Non-blocking getch()
+    
+    // Initialize colors
+    initializeColors();
+
+    isRunning_ = true;
+
+    // Calculate frame delay in microseconds
+    int frameDelay = (int)(1000000.0 / fps);
+
+    cv::Mat grayFrame, colorFrame;
+    while (isRunning_)
+    {
+        auto frameStart = std::chrono::high_resolution_clock::now();
+
+        // Get next frame (both gray and color)
+        if (!frameProvider(grayFrame, colorFrame))
+        {
+            break; // Video ended
+        }
+
+        // Clamp pixel values to palette size
+        cv::Mat clampedFrame = grayFrame.clone();
+        for (int i = 0; i < clampedFrame.rows; i++)
+        {
+            for (int j = 0; j < clampedFrame.cols; j++)
+            {
+                clampedFrame.at<uchar>(i, j) = cv::saturate_cast<uchar>(
+                    (paletteSize - 1) * (grayFrame.at<uchar>(i, j) / 255.0));
+            }
+        }
+
+        // Display frame with color
+        printImageWithColor(clampedFrame, colorFrame);
 
         // Check for user input to quit
         char c = getch();
@@ -375,7 +485,11 @@ void DisplayManager::handleResizeSignal(int sig) {
         endwin();
         refresh();
         
-        // Redraw image
-        instance_->printImage(instance_->currentImage_);
+        // Redraw image (with color if available)
+        if (!instance_->currentColorImage_.empty()) {
+            instance_->printImageWithColor(instance_->currentImage_, instance_->currentColorImage_);
+        } else {
+            instance_->printImage(instance_->currentImage_);
+        }
     }
 }

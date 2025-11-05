@@ -43,7 +43,24 @@ int main(int argc, char** argv) {
     const AsciiPalette& selectedPalette = palettes[paletteIndex];
 
     // Step 2: Select color mode
-    bool useColor = menuManager.selectColorMode();
+    int colorModeIndex = menuManager.selectColorMode();
+    if (colorModeIndex < 0) {
+        menuManager.cleanup();
+        std::cout << "No color mode selected. Exiting..." << std::endl;
+        return 0;
+    }
+    
+    // Map index to ColorMode enum
+    ColorMode colorMode;
+    if (colorModeIndex == 0) {
+        colorMode = ColorMode::GRAYSCALE;
+    } else if (colorModeIndex == 1) {
+        colorMode = ColorMode::COLOR_16;
+    } else {
+        colorMode = ColorMode::COLOR_256;
+    }
+    
+    bool useColor = (colorMode != ColorMode::GRAYSCALE);
 
     // Step 3: Select media type (image, video, or camera)
     int mediaType = menuManager.selectMediaType();
@@ -105,7 +122,7 @@ int main(int argc, char** argv) {
     std::string mediaPath = imagesDir + "/" + selectedMedia;
 
     // Create renderer with selected palette and color mode
-    AsciiRenderer renderer(&selectedPalette, useColor);
+    AsciiRenderer renderer(&selectedPalette, colorMode);
     DisplayManager displayManager(&renderer);
 
     if (isCamera)
@@ -133,13 +150,23 @@ int main(int argc, char** argv) {
             std::cout << "Starting live camera feed... Press Q or ENTER to stop." << std::endl;
             sleep(2);
 
-            auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
-            {
-                return cameraProcessor.getNextFrame(frame);
-            };
+            if (useColor) {
+                auto frameProvider = [&cameraProcessor](cv::Mat &grayFrame, cv::Mat &colorFrame) -> bool
+                {
+                    return cameraProcessor.getNextFrameWithColor(grayFrame, colorFrame);
+                };
 
-            displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
-                                                  cameraProcessor.getFPS());
+                displayManager.displayVideoInTerminalWithColor(frameProvider, selectedPalette.getSize(),
+                                                              cameraProcessor.getFPS());
+            } else {
+                auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
+                {
+                    return cameraProcessor.getNextFrame(frame);
+                };
+
+                displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
+                                                      cameraProcessor.getFPS());
+            }
         }
         else
         {
@@ -148,13 +175,23 @@ int main(int argc, char** argv) {
             std::cout << "Starting live camera feed... Press Q or ENTER to stop." << std::endl;
             sleep(2);
 
-            auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
-            {
-                return cameraProcessor.getNextFrame(frame);
-            };
+            if (useColor) {
+                auto frameProvider = [&cameraProcessor](cv::Mat &grayFrame, cv::Mat &colorFrame) -> bool
+                {
+                    return cameraProcessor.getNextFrameWithColor(grayFrame, colorFrame);
+                };
 
-            displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
-                                                  cameraProcessor.getFPS());
+                displayManager.displayVideoInTerminalWithColor(frameProvider, selectedPalette.getSize(),
+                                                              cameraProcessor.getFPS());
+            } else {
+                auto frameProvider = [&cameraProcessor](cv::Mat &frame) -> bool
+                {
+                    return cameraProcessor.getNextFrame(frame);
+                };
+
+                displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
+                                                      cameraProcessor.getFPS());
+            }
         }
 
         cameraProcessor.release();
@@ -181,13 +218,23 @@ int main(int argc, char** argv) {
             std::cout << "Playing video... Press Q or ENTER to stop." << std::endl;
             sleep(2);
 
-            auto frameProvider = [&videoProcessor, &selectedPalette](cv::Mat &frame) -> bool
-            {
-                return videoProcessor.getNextFrame(frame);
-            };
+            if (useColor) {
+                auto frameProvider = [&videoProcessor](cv::Mat &grayFrame, cv::Mat &colorFrame) -> bool
+                {
+                    return videoProcessor.getNextFrameWithColor(grayFrame, colorFrame);
+                };
 
-            displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
-                                                  videoProcessor.getFPS());
+                displayManager.displayVideoInTerminalWithColor(frameProvider, selectedPalette.getSize(),
+                                                              videoProcessor.getFPS());
+            } else {
+                auto frameProvider = [&videoProcessor](cv::Mat &frame) -> bool
+                {
+                    return videoProcessor.getNextFrame(frame);
+                };
+
+                displayManager.displayVideoInTerminal(frameProvider, selectedPalette.getSize(),
+                                                      videoProcessor.getFPS());
+            }
         }
         else
         {
@@ -195,6 +242,9 @@ int main(int argc, char** argv) {
             std::cout << "Opening video in new window..." << std::endl;
             std::cout << "Dimensions: max " << maxWindowWidth << "x" << maxWindowHeight
                       << " (aspect ratio preserved)" << std::endl;
+            if (useColor) {
+                std::cout << "Note: External window mode uses grayscale only" << std::endl;
+            }
             std::cout << "Press Ctrl+C in the new window to stop playback." << std::endl;
 
             auto frameProvider = [&videoProcessor](cv::Mat &frame) -> bool
@@ -236,57 +286,8 @@ int main(int argc, char** argv) {
         {
             // Display in current terminal
             if (useColor && !colorImage.empty()) {
-                // Color mode - need to create a custom display method
-                // For now, we'll update DisplayManager to handle this
-                
-                // Initialize ncurses with color
-                initscr();
-                noecho();
-                curs_set(FALSE);
-                
-                if (has_colors()) {
-                    start_color();
-                    use_default_colors();
-                    for (int i = 0; i < 16; i++) {
-                        init_pair(i + 1, i, -1);
-                    }
-                }
-                
-                // Get terminal size and resize images
-                int max_y, max_x;
-                getmaxyx(stdscr, max_y, max_x);
-                
-                cv::Mat grayResized, colorResized;
-                cv::resize(processedImage, grayResized, cv::Size(max_x, max_y));
-                cv::resize(colorImage, colorResized, cv::Size(max_x, max_y));
-                
-                // Render with color
-                int size = grayResized.rows * grayResized.cols;
-                char* ascii_matrix = new char[size];
-                int* color_pairs = new int[size];
-                renderer.renderToMatrixWithColor(colorResized, grayResized, ascii_matrix, color_pairs);
-                
-                // Display
-                clear();
-                for (int i = 0; i < grayResized.rows; i++) {
-                    for (int j = 0; j < grayResized.cols; j++) {
-                        int idx = i * grayResized.cols + j;
-                        attron(COLOR_PAIR(color_pairs[idx] + 1));
-                        mvaddch(i, j, ascii_matrix[idx]);
-                        attroff(COLOR_PAIR(color_pairs[idx] + 1));
-                    }
-                }
-                refresh();
-                
-                // Wait for key press
-                getch();
-                
-                // Cleanup
-                delete[] ascii_matrix;
-                delete[] color_pairs;
-                endwin();
+                displayManager.displayInTerminalWithColor(processedImage, colorImage);
             } else {
-                // Grayscale mode - use existing method
                 displayManager.displayInTerminal(processedImage);
             }
         }

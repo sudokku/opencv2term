@@ -31,8 +31,8 @@ public:
     // Show video selection menu
     std::string selectVideo(const std::vector<std::string> &videos);
     
-    // Show color mode selection menu
-    bool selectColorMode();
+    // Show color mode selection menu (returns 0=Grayscale, 1=16-color, 2=256-color, -1=quit)
+    int selectColorMode();
     
 private:
     bool initialized_;

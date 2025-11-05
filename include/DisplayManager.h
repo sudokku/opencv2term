@@ -14,9 +14,16 @@ public:
     // Display in current terminal (interactive mode)
     void displayInTerminal(const cv::Mat& image);
 
+    // Display image with color in current terminal (interactive mode)
+    void displayInTerminalWithColor(const cv::Mat &grayImage, const cv::Mat &colorImage);
+
     // Display video in current terminal (interactive mode)
     // frameProvider should return false when video ends
     void displayVideoInTerminal(std::function<bool(cv::Mat &)> frameProvider, int paletteSize, double fps);
+
+    // Display video with color in current terminal (interactive mode)
+    // frameProvider should return false when video ends
+    void displayVideoInTerminalWithColor(std::function<bool(cv::Mat &, cv::Mat &)> frameProvider, int paletteSize, double fps);
 
     // Open image in new window (static mode, clean display)
     void displayImageInNewWindow(const cv::Mat &image, int maxWidth = 120, int maxHeight = 60);
@@ -37,6 +44,9 @@ private:
     
     // Print image with color using ncurses
     void printImageWithColor(const cv::Mat& grayImage, const cv::Mat& colorImage);
+
+    // Initialize colors based on renderer's color mode
+    void initializeColors();
 
     // Generate shell script for clean external window display
     std::string generateDisplayScript(const std::string &asciiFile, bool isVideo = false);
