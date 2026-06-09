@@ -7,11 +7,12 @@ A terminal ASCII art renderer that converts images, videos, and live camera feed
 - Three color modes: GRAYSCALE, COLOR_16, COLOR_256
 - Three ASCII palettes: Standard (10), Balanced (20), Detailed (70)
 - Three input types: static images, video files, live camera
-- Two display modes: current terminal (interactive) or new terminal window (static)
+- Three image modes: current terminal, new terminal window, or generated PNG
 - Frame-accurate video playback at original FPS
 - Terminal resize handling via SIGWINCH (images in current terminal mode)
 - Aspect ratio preservation for all media types
 - Interactive ncurses menu with arrow key navigation
+- Generated ASCII image export at 64, 128, or 256 characters on the shorter edge
 
 ## Project Structure
 
@@ -35,6 +36,7 @@ opencv2term/
 │   ├── VideoProcessor.cpp
 │   └── CameraProcessor.cpp
 ├── images/              # Input media directory (gitignored)
+├── outputs/             # Generated ASCII images (gitignored)
 ├── build/               # Build artifacts (gitignored)
 ├── CMakeLists.txt
 └── README.md
@@ -82,6 +84,7 @@ Media files must be placed in `images/` relative to the project root (one level 
    - Select media type (Image, Video, or Camera)
    - Select a file (Image and Video only)
    - Select a display mode
+   - Select an output density if generating an ASCII image file
 
 ### Menu Navigation
 
@@ -99,6 +102,21 @@ Media files must be placed in `images/` relative to the project root (one level 
 | New window | Image | Opens separate terminal window, press any key to close |
 | New window | Video | Opens separate terminal window, loops until Ctrl+C |
 | New window | Camera | Falls back to current terminal mode |
+| Generated PNG | Image | Writes a dark-background ASCII image to `outputs/` |
+
+### Generated Images
+
+Image inputs can be exported as PNG files with dark backgrounds. The size presets control ASCII density, not final bitmap dimensions:
+
+| Density | ASCII cells |
+|---------|-------------|
+| Small | 64 characters on the shorter edge |
+| Medium | 128 characters on the shorter edge |
+| Large | 256 characters on the shorter edge |
+
+The longer edge is calculated from the source image aspect ratio and measured character-cell dimensions. Rendering accounts for glyph width, baseline, and line height before resizing the source into ASCII cells, so the result is not stretched as if every ASCII character were a 1x1 pixel.
+
+The final PNG pixel dimensions depend on the input image size and selected density. The renderer does not add extra letter spacing or line spacing, which keeps the ASCII texture tight and readable.
 
 ## ASCII Palettes
 
@@ -128,7 +146,7 @@ All three modes use the same brightness-based character selection; color mode on
 ## Supported Formats
 
 ### Images
-`.jpg`, `.png`, `.bmp`, `.gif`, `.tiff`
+`.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.gif`, `.tiff`, `.tif`
 
 ### Video
 `.mp4`, `.avi`, `.mov`, `.mkv`, `.wmv`, `.flv`, `.webm`

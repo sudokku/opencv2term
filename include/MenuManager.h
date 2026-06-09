@@ -23,7 +23,10 @@ public:
     std::string selectImage(const std::vector<std::string>& images);
     
     // Show display mode selection menu
-    int selectDisplayMode();
+    int selectDisplayMode(bool allowImageExport = false);
+
+    // Show generated image density selection menu (returns 0=small, 1=medium, 2=large, -1=quit)
+    int selectImageOutputDensity();
     
     // Show media type selection menu (image, video, or camera)
     int selectMediaType();
@@ -43,4 +46,3 @@ private:
 };
 
 #endif // MENU_MANAGER_H
-

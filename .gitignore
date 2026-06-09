@@ -1,6 +1,7 @@
 build/
 .vscode/
 images/
+outputs/
 main.cpp.old
 *.o
 *.a

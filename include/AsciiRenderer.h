@@ -27,6 +27,10 @@ public:
     
     // Save ASCII art to file
     bool saveToFile(const cv::Mat& image, const std::string& filename) const;
+
+    // Save ASCII art as a rendered image with a dark background
+    bool saveAsImage(const cv::Mat& image, const cv::Mat& colorImage,
+                     const std::string& filename, int shortEdgeChars) const;
     
     void setPalette(const AsciiPalette* palette) { palette_ = palette; }
     void setColorMode(ColorMode colorMode) { colorMode_ = colorMode; }
@@ -45,4 +49,3 @@ private:
 };
 
 #endif // ASCII_RENDERER_H
-

@@ -30,7 +30,7 @@ bool ImageProcessor::loadImageWithColor(const std::string& filepath, cv::Mat& co
 
 std::vector<std::string> ImageProcessor::getImageFiles(const std::string& directory) {
     std::vector<std::string> imageFiles;
-    std::vector<std::string> extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif"};
+    std::vector<std::string> extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif", ".webp"};
     
     try {
         for (const auto& entry : fs::directory_iterator(directory)) {
@@ -109,4 +109,3 @@ void ImageProcessor::release() {
     }
     cv::setNumThreads(0);  // Clean up OpenCV thread pool
 }
-

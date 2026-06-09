@@ -1,5 +1,6 @@
 #include <iostream>
 #include <unistd.h>
+#include <filesystem>
 #include "AsciiPalette.h"
 #include "ImageProcessor.h"
 #include "VideoProcessor.h"
@@ -9,9 +10,24 @@
 #include "MenuManager.h"
 #include <ncurses.h>
 
+namespace fs = std::filesystem;
+
+int getOutputImageShortEdgeChars(int sizeIndex) {
+    if (sizeIndex == 0) return 64;
+    if (sizeIndex == 1) return 128;
+    return 256;
+}
+
+std::string getOutputImageDensityName(int sizeIndex) {
+    if (sizeIndex == 0) return "small";
+    if (sizeIndex == 1) return "medium";
+    return "large";
+}
+
 int main(int argc, char** argv) {
     // Configuration
     const std::string imagesDir = "../images";
+    const std::string outputsDir = "../outputs";
     const int maxWindowWidth = 120;
     const int maxWindowHeight = 60;
 
@@ -22,7 +38,7 @@ int main(int argc, char** argv) {
     if (imageFiles.empty() && videoFiles.empty())
     {
         std::cerr << "No media files found in " << imagesDir << " directory" << std::endl;
-        std::cerr << "Please add some image files (.jpg, .png, .bmp, etc.) or video files (.mp4, .avi, .mov, etc.)" << std::endl;
+        std::cerr << "Please add some image files (.jpg, .png, .webp, .bmp, etc.) or video files (.mp4, .avi, .mov, etc.)" << std::endl;
         return -1;
     }
 
@@ -109,11 +125,25 @@ int main(int argc, char** argv) {
     }
 
     // Step 4: Select display mode
-    int displayMode = menuManager.selectDisplayMode();
+    int displayMode = menuManager.selectDisplayMode(!isVideo && !isCamera);
     if (displayMode < 0) {
         menuManager.cleanup();
         std::cout << "No display mode selected. Exiting..." << std::endl;
         return 0;
+    }
+
+    int outputImageShortEdgeChars = 0;
+    std::string outputImageDensityName;
+    if (displayMode == 2) {
+        int outputDensityIndex = menuManager.selectImageOutputDensity();
+        if (outputDensityIndex < 0) {
+            menuManager.cleanup();
+            std::cout << "No generated image density selected. Exiting..." << std::endl;
+            return 0;
+        }
+
+        outputImageShortEdgeChars = getOutputImageShortEdgeChars(outputDensityIndex);
+        outputImageDensityName = getOutputImageDensityName(outputDensityIndex);
     }
     
     // Clean up menu UI
@@ -291,7 +321,7 @@ int main(int argc, char** argv) {
                 displayManager.displayInTerminal(processedImage);
             }
         }
-        else
+        else if (displayMode == 1)
         {
             // Display in new window
             std::cout << "Opening image in new window..." << std::endl;
@@ -301,6 +331,20 @@ int main(int argc, char** argv) {
                 std::cout << "Note: External window mode uses grayscale only" << std::endl;
             }
             displayManager.displayImageInNewWindow(processedImage, maxWindowWidth, maxWindowHeight);
+        }
+        else
+        {
+            fs::create_directories(outputsDir);
+            fs::path outputPath = fs::path(outputsDir) /
+                (fs::path(selectedMedia).stem().string() + "_ascii_" + outputImageDensityName + ".png");
+
+            if (renderer.saveAsImage(processedImage, colorImage, outputPath.string(), outputImageShortEdgeChars)) {
+                std::cout << "Generated ASCII image: " << outputPath << std::endl;
+            } else {
+                std::cerr << "Error: Could not generate ASCII image: " << outputPath << std::endl;
+                imageProcessor.release();
+                return -1;
+            }
         }
 
         imageProcessor.release();

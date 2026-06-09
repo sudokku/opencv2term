@@ -3,6 +3,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 AsciiRenderer::AsciiRenderer(const AsciiPalette* palette, ColorMode colorMode)
     : palette_(palette), colorMode_(colorMode) {}
@@ -169,3 +170,105 @@ bool AsciiRenderer::saveToFile(const cv::Mat& image, const std::string& filename
     return true;
 }
 
+bool AsciiRenderer::saveAsImage(const cv::Mat& image, const cv::Mat& colorImage,
+                                const std::string& filename, int shortEdgeChars) const {
+    if (image.empty() || !palette_ || shortEdgeChars <= 0) return false;
+
+    const int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    const bool isLandscape = image.cols >= image.rows;
+    const double sourceAspect = static_cast<double>(image.cols) / image.rows;
+    const double sourceShortEdge = static_cast<double>(std::min(image.cols, image.rows));
+    const double minReadableCellSize = 4.0;
+    const double targetShortCellSize = std::max(minReadableCellSize, sourceShortEdge / shortEdgeChars);
+
+    int thickness = targetShortCellSize >= 18.0 ? 2 : 1;
+
+    struct GlyphMetrics {
+        int glyphWidth;
+        int glyphHeight;
+        int baseline;
+        int cellWidth;
+        int lineHeight;
+        std::vector<cv::Size> glyphSizes;
+        std::vector<int> baselines;
+    };
+
+    auto measureGlyphs = [&](double fontScale) {
+        GlyphMetrics metrics;
+        metrics.glyphWidth = 0;
+        metrics.glyphHeight = 0;
+        metrics.baseline = 0;
+        metrics.glyphSizes.resize(palette_->getSize());
+        metrics.baselines.resize(palette_->getSize(), 0);
+
+        for (int i = 0; i < palette_->getSize(); i++) {
+            std::string glyph(1, palette_->getCharAt(i));
+            metrics.glyphSizes[i] = cv::getTextSize(glyph, fontFace, fontScale, thickness, &metrics.baselines[i]);
+            metrics.glyphWidth = std::max(metrics.glyphWidth, metrics.glyphSizes[i].width);
+            metrics.glyphHeight = std::max(metrics.glyphHeight, metrics.glyphSizes[i].height);
+            metrics.baseline = std::max(metrics.baseline, metrics.baselines[i]);
+        }
+
+        metrics.cellWidth = std::max(1, metrics.glyphWidth);
+        metrics.lineHeight = std::max(1, metrics.glyphHeight + metrics.baseline);
+        return metrics;
+    };
+
+    double fontScale = 1.0;
+    GlyphMetrics metrics = measureGlyphs(fontScale);
+    for (int i = 0; i < 4; i++) {
+        double currentShortCellSize = isLandscape ? metrics.lineHeight : metrics.cellWidth;
+        fontScale = std::clamp(fontScale * targetShortCellSize / currentShortCellSize, 0.08, 12.0);
+        metrics = measureGlyphs(fontScale);
+    }
+
+    int rows = shortEdgeChars;
+    int cols = shortEdgeChars;
+    if (isLandscape) {
+        rows = shortEdgeChars;
+        cols = std::max(1, static_cast<int>(std::round(sourceAspect * rows * metrics.lineHeight / metrics.cellWidth)));
+    } else {
+        cols = shortEdgeChars;
+        rows = std::max(1, static_cast<int>(std::round(cols * metrics.cellWidth / (sourceAspect * metrics.lineHeight))));
+    }
+
+    cv::Mat asciiSource;
+    cv::resize(image, asciiSource, cv::Size(cols, rows), 0, 0, cv::INTER_AREA);
+
+    cv::Mat colorSource;
+    bool drawColor = colorMode_ != ColorMode::GRAYSCALE && !colorImage.empty();
+    if (drawColor) {
+        cv::resize(colorImage, colorSource, cv::Size(cols, rows), 0, 0, cv::INTER_AREA);
+    }
+
+    int outputWidth = std::max(1, cols * metrics.cellWidth);
+    int outputHeight = std::max(1, rows * metrics.lineHeight);
+    cv::Mat output(outputHeight, outputWidth, CV_8UC3, cv::Scalar(12, 12, 12));
+
+    cv::Scalar defaultTextColor(230, 230, 230);
+
+    for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < cols; col++) {
+            int paletteIndex = std::clamp(static_cast<int>(asciiSource.at<uchar>(row, col)), 0, palette_->getSize() - 1);
+            char glyph = palette_->getCharAt(paletteIndex);
+            if (glyph == ' ') continue;
+
+            std::string text(1, glyph);
+            cv::Size glyphSize = metrics.glyphSizes[paletteIndex];
+            int baseline = metrics.baselines[paletteIndex];
+            int x = col * metrics.cellWidth + (metrics.cellWidth - glyphSize.width) / 2;
+            int y = row * metrics.lineHeight + (metrics.lineHeight - glyphSize.height - baseline) / 2 + glyphSize.height;
+
+            cv::Scalar textColor = defaultTextColor;
+            if (drawColor) {
+                cv::Vec3b bgr = colorSource.at<cv::Vec3b>(row, col);
+                textColor = cv::Scalar(bgr[0], bgr[1], bgr[2]);
+            }
+
+            cv::putText(output, text, cv::Point(x, y), fontFace, fontScale,
+                        textColor, thickness, cv::LINE_AA);
+        }
+    }
+
+    return cv::imwrite(filename, output);
+}

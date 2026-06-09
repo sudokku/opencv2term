@@ -48,13 +48,27 @@ std::string MenuManager::selectImage(const std::vector<std::string>& images) {
     return "";
 }
 
-int MenuManager::selectDisplayMode() {
+int MenuManager::selectDisplayMode(bool allowImageExport) {
     std::vector<std::string> options = {
         "Display in current terminal (interactive, resizable)",
         "Open in new window (static, with calculated dimensions)"
     };
+
+    if (allowImageExport) {
+        options.push_back("Generate ASCII image file (PNG)");
+    }
     
     return showMenu("Select display mode:", options);
+}
+
+int MenuManager::selectImageOutputDensity() {
+    std::vector<std::string> options = {
+        "Small (64 chars on shorter edge)",
+        "Medium (128 chars on shorter edge)",
+        "Large (256 chars on shorter edge)"
+    };
+
+    return showMenu("Select generated image density:", options);
 }
 
 int MenuManager::selectMediaType()
@@ -165,4 +179,3 @@ int MenuManager::showMenu(const std::string& title, const std::vector<std::strin
         }
     }
 }
-
